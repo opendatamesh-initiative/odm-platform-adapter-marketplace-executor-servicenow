@@ -2,7 +2,7 @@
 
 [Back to README](../README.md)
 
-## Overview (in plain words)
+## Overview
 
 The executor is a small, stateless Java service. You take the ready-made Docker image (or build it), give it a configuration file and a few secrets, start it, and tell the ODM Marketplace Service where it lives. After that, a test request should create a ticket in ServiceNow. This page walks through those steps. Every release is published as a Docker image on GitHub Container Registry and Docker Hub, built by GitHub Actions. The repository does not ship a Helm chart or Kubernetes manifests; the image runs on any container platform, and the JVM build also runs as a plain Java 21 process.
 

@@ -2,7 +2,7 @@
 
 [Back to README](../README.md) | [All use cases](use-cases.md)
 
-## Overview (in plain words)
+## Overview
 
 Choose this when you want ServiceNow itself to decide what record gets created from the incoming data. The executor writes **one row into a staging table**; a **transform map** you control turns that row into the real record (here an `sc_task`) and copies the marketplace request id into its `correlation_id`. The executor never touches the final record directly.
 

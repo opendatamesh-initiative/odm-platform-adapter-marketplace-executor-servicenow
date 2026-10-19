@@ -2,7 +2,7 @@
 
 [Back to README](../README.md) | [All use cases](use-cases.md)
 
-## Overview (in plain words)
+## Overview
 
 Choose this when the way a ticket is created (assignment group, templates, defaults, extra checks) should live **inside ServiceNow**, under your control. You write a small Scripted REST API; the executor sends it the rendered fields plus the marketplace request id, and your script creates whatever record it wants and tells the executor which ticket it made.
 

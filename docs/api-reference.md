@@ -2,7 +2,7 @@
 
 [Back to README](../README.md)
 
-## Overview (in plain words)
+## Overview
 
 The executor talks to two parties through HTTP. The **Marketplace Service** sends it access requests and receives results back. **ServiceNow** (through an authenticating gateway) tells it when a ticket is done. This page lists exactly what those messages look like.
 

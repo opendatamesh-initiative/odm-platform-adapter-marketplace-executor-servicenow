@@ -2,7 +2,7 @@
 
 [Back to README](../README.md)
 
-## Overview (in plain words)
+## Overview
 
 The executor always does the same thing: a marketplace request becomes a ServiceNow ticket, and the ticket's outcome goes back to the marketplace. What changes from company to company is **which kind of ServiceNow record is the "ticket"**. The executor supports four ways to create it. Pick the one that matches how your organisation already handles access requests, and use the matching guide to configure both the executor and ServiceNow.
 

@@ -2,7 +2,7 @@
 
 [Back to README](../README.md)
 
-## Overview (in plain words)
+## Overview
 
 The ODM marketplace lets people ask for access to a data product (or ask for that access to be removed). Somebody still has to *do* the work: approve the request, create the permissions, remove them later. In most companies that work already lives in ServiceNow.
 

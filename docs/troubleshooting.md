@@ -2,7 +2,7 @@
 
 [Back to README](../README.md)
 
-## Overview (in plain words)
+## Overview
 
 When something does not work, it is almost always one of three things: the configuration is invalid (the executor will not start), the ticket was not created (the request shows `ERROR`), or the ticket was closed but the marketplace still says `PENDING` (the call back from ServiceNow did not arrive or was ignored). This page helps you find which, and lists what the logs mean.
 

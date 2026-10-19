@@ -2,7 +2,7 @@
 
 [Back to README](../README.md)
 
-## Overview (in plain words)
+## Overview
 
 Two things in the executor are text you can customise: **what the ticket says** (its short description, description, catalog variables) and **what the marketplace shows to people** when the request progresses ("ticket INC0010042 opened, awaiting fulfilment", "access granted, closed by Mario Rossi"). Both are written as small templates with placeholders, using the Quarkus template engine **Qute**. This page explains the syntax, the data you can use, the default messages, and how to keep personal data out of the messages.
 

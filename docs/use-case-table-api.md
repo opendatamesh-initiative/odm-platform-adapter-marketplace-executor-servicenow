@@ -2,7 +2,7 @@
 
 [Back to README](../README.md) | [All use cases](use-cases.md)
 
-## Overview (in plain words)
+## Overview
 
 The simplest option. When someone requests access to a data product, the executor creates **a record in a ServiceNow table of your choice**, here an `incident`, and writes the marketplace request id into the standard `correlation_id` field. A fulfiller works the incident as usual. When it is resolved, closed or cancelled, ServiceNow tells the executor, which turns the close code into granted, denied, revoked or failed.
 

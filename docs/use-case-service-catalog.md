@@ -2,7 +2,7 @@
 
 [Back to README](../README.md) | [All use cases](use-cases.md)
 
-## Overview (in plain words)
+## Overview
 
 Choose this when access requests already go through the ServiceNow **Service Catalog**, with approvals and fulfilment workflows. The executor **orders a catalog item on behalf of the person who made the marketplace request**, so the order shows up as that person's own request. Your catalog workflow does the rest. When the requested item is closed (or the approval is rejected), the executor reports the outcome back to the marketplace.
 

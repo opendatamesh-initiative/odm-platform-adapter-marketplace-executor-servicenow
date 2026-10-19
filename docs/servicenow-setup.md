@@ -2,7 +2,7 @@
 
 [Back to README](../README.md)
 
-## Overview (in plain words)
+## Overview
 
 For the executor to work, ServiceNow must be prepared in two directions:
 

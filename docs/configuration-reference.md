@@ -2,7 +2,7 @@
 
 [Back to README](../README.md)
 
-## Overview (in plain words)
+## Overview
 
 Everything the executor does is driven by configuration: where ServiceNow is, how to log in, which requests to take, what the ticket looks like, and which ticket states mean "approved" or "rejected". This page lists every property. If you just want a working example, start from one of the [use cases](use-cases.md) and come back here for the details.
 
