@@ -5,9 +5,9 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
 import org.opendatamesh.platform.adapter.marketplace.executor.starter.marketplace.domain.MarketplaceOperation;
 import org.opendatamesh.platform.adapter.marketplace.executor.starter.marketplace.domain.TicketOutcomeCause;
-import org.opendatamesh.platform.adapter.marketplace.executor.starter.servicenow.services.core.OutcomeRulesService;
-import org.opendatamesh.platform.adapter.marketplace.executor.starter.servicenow.services.core.RequestFilterService;
-import org.opendatamesh.platform.adapter.marketplace.executor.starter.servicenow.services.core.TicketTemplateRenderer;
+import org.opendatamesh.platform.adapter.marketplace.executor.starter.marketplace.services.OutcomeRulesService;
+import org.opendatamesh.platform.adapter.marketplace.executor.starter.marketplace.services.RequestFilterService;
+import org.opendatamesh.platform.adapter.marketplace.executor.starter.client.servicenow.TicketTemplateRenderer;
 
 import java.net.URI;
 import java.util.ArrayList;

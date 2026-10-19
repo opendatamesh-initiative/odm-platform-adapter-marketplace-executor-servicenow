@@ -1,9 +1,9 @@
 package org.opendatamesh.platform.adapter.marketplace.executor.starter.marketplace.services.usecases.processrequest;
 
-import org.opendatamesh.platform.adapter.marketplace.executor.starter.marketplace.services.core.MarketplaceServiceClient;
-import org.opendatamesh.platform.adapter.marketplace.executor.starter.servicenow.services.core.RequestFilterService;
-import org.opendatamesh.platform.adapter.marketplace.executor.starter.servicenow.services.core.ResultMessageService;
-import org.opendatamesh.platform.adapter.marketplace.executor.starter.servicenow.services.core.ServiceNowTicketService;
+import org.opendatamesh.platform.adapter.marketplace.executor.starter.client.marketplace.MarketplaceServiceClient;
+import org.opendatamesh.platform.adapter.marketplace.executor.starter.marketplace.services.RequestFilterService;
+import org.opendatamesh.platform.adapter.marketplace.executor.starter.client.servicenow.ResultMessageService;
+import org.opendatamesh.platform.adapter.marketplace.executor.starter.client.servicenow.ServiceNowTicketService;
 import org.opendatamesh.platform.adapter.marketplace.executor.starter.utils.services.programmatic.AsyncExecutorService;
 import org.opendatamesh.platform.adapter.marketplace.executor.starter.utils.usecases.UseCase;
 import jakarta.enterprise.context.ApplicationScoped;

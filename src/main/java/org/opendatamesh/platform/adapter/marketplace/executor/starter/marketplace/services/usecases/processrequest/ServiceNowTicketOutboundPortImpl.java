@@ -3,7 +3,7 @@ package org.opendatamesh.platform.adapter.marketplace.executor.starter.marketpla
 import org.opendatamesh.platform.adapter.marketplace.executor.starter.marketplace.domain.MarketplaceOperation;
 import org.opendatamesh.platform.adapter.marketplace.executor.starter.marketplace.domain.MarketplaceRequest;
 import org.opendatamesh.platform.adapter.marketplace.executor.starter.marketplace.domain.TicketReference;
-import org.opendatamesh.platform.adapter.marketplace.executor.starter.servicenow.services.core.ServiceNowTicketService;
+import org.opendatamesh.platform.adapter.marketplace.executor.starter.client.servicenow.ServiceNowTicketService;
 
 class ServiceNowTicketOutboundPortImpl implements ServiceNowTicketOutboundPort {
 

@@ -281,7 +281,7 @@ Outcome rules declare a **cause**, never a status. That makes it impossible to c
      - first-final-wins
      - cause → status taxonomy
      - final post must succeed
-   - **Mechanics live in `@ApplicationScoped` core services** reached through plain port impls:
+   - **Mechanics live in `@ApplicationScoped` clients and services** reached through plain port impls:
      - regex matching
      - Qute rendering
      - JSON Pointer extraction
@@ -320,8 +320,8 @@ Outcome rules declare a **cause**, never a status. That makes it impossible to c
      - `CompleteTicketMessageOutboundPort`
 
 ### Dependencies
-1. `MarketplaceExecutorUseCaseResource` (existing) depends on `MarketplaceExecutorUseCasesService.processRequest`.
-2. `ServiceNowTicketEventUseCaseResource` (new) depends on `MarketplaceExecutorUseCasesService.processTicketEvent`.
+1. `MarketplaceExecutorUseCaseController` (existing) depends on `MarketplaceExecutorUseCasesService.processRequest`.
+2. `ServiceNowTicketEventUseCaseController` (new) depends on `MarketplaceExecutorUseCasesService.processTicketEvent`.
 3. `MarketplaceExecutorUseCasesService` depends on `ProcessMarketplaceRequestFactory`, `CompleteTicketFactory` and `ObjectMapper` (to serialize non-scalar webhook field values).
 4. `ProcessMarketplaceRequestFactory` injects these and wires the port impls with `new`:
    - `RequestFilterService`
@@ -334,7 +334,7 @@ Outcome rules declare a **cause**, never a status. That makes it impossible to c
    - `RequestFilterService`
    - `OutcomeRulesService`
    - `ResultMessageService`
-6. Core service dependencies:
+6. Client and service dependencies:
    - `ServiceNowTicketService` depends on `ServiceNowConfig`, `TicketTemplateRenderer` and `Instance<TicketCreator>`.
    - Each `TicketCreator` depends on `ServiceNowClient`, `TicketTemplateRenderer` and `ServiceNowConfig`.
    - `ServiceNowClient` depends on `@ServiceNowApi RestUtils` (produced by `ServiceNowRestUtilsProducer` from `ServiceNowConfig`, `ObjectMapper` and `RestUtilsFactory.getAuthenticatedRestUtils`) and on `ServiceNowConfig`.
@@ -348,24 +348,22 @@ Outcome rules declare a **cause**, never a status. That makes it impossible to c
    - `MarketplaceServiceClient` owns the `MarketplaceResult` → `MarketplaceResponseRes` mapping (private methods). The former `MarketplaceResourceMapper` in the use-case package was removed.
 
 ### Layered Architecture
-1. **HTTP layer** (`{base}.rest`, `{base}.resources`): thin JAX-RS resources plus `*Res` DTOs with OpenAPI. The existing `ResponseExceptionMapper` produces the uniform `ErrorResponse`.
-2. **Application layer** (`{base}.marketplace.services`): `MarketplaceExecutorUseCasesService` maps `*Res` ↔ domain commands and presenter results ↔ `*ResultRes`.
+1. **HTTP layer** (`{base}.rest.v1.controllers`, `{base}.rest.v1.resources.marketplace[.usecases.processrequest|completeticket]`): thin controllers plus `*Res` DTOs with OpenAPI. The existing `ResponseExceptionMapper` (unversioned `{base}.rest`) produces the uniform `ErrorResponse`.
+2. **Application layer** (`{base}.marketplace.services`): `MarketplaceExecutorUseCasesService` maps `*Res` ↔ domain commands and presenter results ↔ `*ResultRes`. The same package holds the collaborators that are not clients: `RequestFilterService` and `OutcomeRulesService`.
 3. **Use case layer**:
    - `{base}.marketplace.services.usecases.processrequest` (reworked)
    - `{base}.marketplace.services.usecases.completeticket` (new)
 
    It holds commands, presenters, ports, plain port impls, and the single `@ApplicationScoped` factory per slice.
 4. **Domain layer** (`{base}.marketplace.domain`): existing records and enums plus `RegisteredAccessRequest`, `TicketReference`, `TicketEvent`, `TicketOutcomeCause`, `TicketOutcome` and `TicketEventIgnoredReason`.
-5. **Core / infrastructure layer** (`{base}.servicenow.services.core`, new):
+5. **Client layer** (outbound integrations; the executor owns no entities, so there is no core package) — `{base}.client.servicenow`, new:
    - `ServiceNowClient`
    - `ServiceNowTicketService`
    - the `TicketCreator` strategies
    - `TicketTemplateRenderer`
-   - `RequestFilterService`
-   - `OutcomeRulesService`
    - `ResultMessageService`
 
-   `{base}.marketplace.services.core.MarketplaceServiceClient` is also new.
+   `{base}.client.marketplace.MarketplaceServiceClient` is also new.
 6. **Configuration layer** (`{base}.config`):
    - `ServiceNowConfig` (new)
    - `TicketInterfaceType` and `ServiceNowAuthType` (new, kept with the config because they are config values)
@@ -436,7 +434,7 @@ Outcome rules declare a **cause**, never a status. That makes it impossible to c
 3. Extend `MarketplaceServiceConfig` with `ResultDelivery resultDelivery()`, which has `@WithDefault("5") int maxAttempts()` and `@WithDefault("1s") Duration backoff()`.
 4. Done when the application starts with the `application.yml` from task 11.
 
-### 5. Implement Core Service — `TicketTemplateRenderer` (`{base}.servicenow.services.core`, `@ApplicationScoped`)
+### 5. Implement Client Support — `TicketTemplateRenderer` (`{base}.client.servicenow`, `@ApplicationScoped`)
 1. Dependency: `io.quarkus.qute.Engine engine` (constructor injection).
 2. Attributes: `ConcurrentMap<String, Template> cache`.
 3. Methods:
@@ -458,12 +456,12 @@ Outcome rules declare a **cause**, never a status. That makes it impossible to c
      - `OAUTH2_CLIENT_CREDENTIALS`: `connectionHeaders = List.of()`, and `oauth2 = new Oauth2(tokenUrl, "client_credentials", scope or null, clientId, clientSecret, null, null)`, where `tokenUrl = config.auth().oauth2().tokenUrl().orElse(stripTrailingSlash(instanceUrl) + "/oauth_token.do")`.
      - `API_KEY`: `connectionHeaders = List.of(new HttpHeader(apiKey.headerName(), apiKey.value().orElseThrow()))`, and `oauth2 = null`.
 3. The existing unqualified `RestUtils` from `RestUtilsProducer` stays dedicated to the Marketplace Service.
-4. Verify in a unit test that the token request omits `scope` when it is not configured. If `AuthenticatedRestUtilsTemplate` sends `scope=null`, fix the shared-secret request builder there to skip null values. It is the only change allowed in the template's client package.
+4. Verify in a unit test that the token request omits `scope` when it is not configured. If `AuthenticatedRestUtilsTemplate` sends `scope=null`, fix the shared-secret request builder there to skip null values. It is the only change allowed in the template's `utils.client` package.
    - *Implemented:* `Oauth2` has no all-arguments constructor, so the producer builds it with `setUrl`, `setGrantType`, `setScope`, `setClientId` and `setClientSecret`.
    - The shared-secret builder in `AuthenticatedRestUtilsTemplate` now skips `scope` when it is null or blank; before the fix it sent `scope=`.
    - `ServiceNowRestUtilsProducerTest` checks the token URL, `grant_type=client_credentials`, that `scope` is absent, and the Bearer header, against a local `com.sun.net.httpserver.HttpServer`.
 
-### 6. Implement Core Service — `ServiceNowClient` (`{base}.servicenow.services.core`, `@ApplicationScoped`)
+### 6. Implement Client — `ServiceNowClient` (`{base}.client.servicenow`, `@ApplicationScoped`)
 1. Dependencies: `@ServiceNowApi RestUtils restUtils`, `ServiceNowConfig config`.
 2. Methods:
    - `JsonNode send(String method, String path, ObjectNode body)`
@@ -483,7 +481,7 @@ Outcome rules declare a **cause**, never a status. That makes it impossible to c
    - Never include header values, client secrets or API keys in messages or logs.
    - `String ticketLink(String table, String sysId)`: returns `""` if either is blank, otherwise `instanceUrl + "/" + table + ".do?sys_id=" + sysId`.
 
-### 7. Implement Ticket Creators (`{base}.servicenow.services.core`, each `@ApplicationScoped`, implements `TicketCreator`)
+### 7. Implement Ticket Creators (`{base}.client.servicenow`, each `@ApplicationScoped`, implements `TicketCreator`)
 Shared shape. The `create(profile, data, correlationId)` body is a composed method:
 1. `ObjectNode fields = renderFields(profile, data)`: each `profile.fields()` entry becomes a `TextNode` of `renderer.render(value, data)`.
 2. `ObjectNode body = buildBody(profile, data, fields, correlationId)`: per interface. The correlation entry is always added last.
@@ -519,13 +517,13 @@ Per-interface specifics (defaults from the Approach table; a profile override al
   - `path` is required, and the method is `profile.method()`. The correlation field defaults to `correlation_id`.
   - `numberPointer` and `sysIdPointer` are required (validated at startup). Table comes from `tablePointer`, else `table`, else `""`.
 
-### 8. Implement Core Service — `ServiceNowTicketService` (`{base}.servicenow.services.core`, `@ApplicationScoped`)
+### 8. Implement Client — `ServiceNowTicketService` (`{base}.client.servicenow`, `@ApplicationScoped`)
 1. Dependencies: `ServiceNowConfig`, `TicketTemplateRenderer`, `Instance<TicketCreator> creators`. The constructor builds an `EnumMap<TicketInterfaceType, TicketCreator>`.
 2. `TicketReference openTicket(MarketplaceOperation operation, MarketplaceRequest request)`
    - Logic: `profile = config.profiles().forOperation(operation)`; `data = renderer.requestData(operation, request)`; `return creators.get(profile.type()).create(profile, data, request.identifier())`.
    - Log at info: `"Opened ServiceNow ticket {number} ({table}) for request {uuid} operation {op}"`.
 
-### 9. Implement Core Services — `RequestFilterService`, `OutcomeRulesService`, `ResultMessageService` (`{base}.servicenow.services.core`, `@ApplicationScoped`)
+### 9. Implement Services — `RequestFilterService`, `OutcomeRulesService` (`{base}.marketplace.services`) and Client — `ResultMessageService` (`{base}.client.servicenow`), all `@ApplicationScoped`
 1. `RequestFilterService.accepts(MarketplaceOperation operation, MarketplaceRequest request): boolean`
    - Logic: every configured criterion must match (AND); within a criterion any regex may match (OR). Regexes are compiled once in the constructor with `Pattern.compile(regex)`, and a value matches when `pattern.matcher(value).matches()` (full match, case-sensitive unless the regex uses `(?i)`). A null value never matches.
    - `void verifyPatterns()`: compiles every filter regex and throws `InternalException` naming the criterion and index. Used by the startup validator.
@@ -550,7 +548,7 @@ Per-interface specifics (defaults from the Approach table; a profile override al
    - Template choice: rule message, else profile message for the cause or kind, else the global message. Causes map to `fulfilled`, `refused` and `failed`; the other kinds are `pending` and `technicalError`. Render the chosen template.
    - Trim the result and truncate it to 4000 chars.
 
-### 10. Implement Core Service — `MarketplaceServiceClient` (`{base}.marketplace.services.core`, `@ApplicationScoped`)
+### 10. Implement Client — `MarketplaceServiceClient` (`{base}.client.marketplace`, `@ApplicationScoped`)
 1. Dependencies: `RestUtils`, `MarketplaceServiceConfig`, `ObjectMapper`.
 2. Methods:
    - `Optional<RegisteredAccessRequest> findAccessRequest(String uuid)`
@@ -668,23 +666,23 @@ Per-interface specifics (defaults from the Approach table; a profile override al
    - Build a private static `TicketEventResultHolder implements CompleteTicketPresenter`, then call `factory.buildCompleteTicket(command, holder).execute()` and return `holder.toRes()`.
 3. Keep `processRequest` unchanged.
 
-### 16. Create DTOs (`{base}.resources`)
+### 16. Create DTOs (`{base}.rest.v1.resources.marketplace.usecases.completeticket`)
 1. `TicketEventCommandRes`:
    - `@Schema(description = "Marketplace request UUID stored in the ServiceNow ticket")` `String correlationId`
    - `@Schema(description = "Ticket fields used by outcome rules and messages, e.g. state, close_code, close_notes, number, sys_id, table, closed_by")` `Map<String, Object> fields`
    - A bean with an empty constructor plus getters and setters. There is no `@NotBlank` on `correlationId`: a missing correlation is acknowledged with `IGNORED`, not rejected.
 2. `TicketEventResultRes`: `String outcome` (`REPORTED` | `IGNORED`), `MarketplaceRequestStatus status` (nullable), `TicketEventIgnoredReason reason` (nullable), each with `@Schema`. The class is annotated `@JsonInclude(JsonInclude.Include.NON_NULL)`, so null `status` or `reason` are omitted from the JSON, as the README documents.
 
-### 17. Create REST Resource — `ServiceNowTicketEventUseCaseResource` (`{base}.rest`)
+### 17. Create REST Controller — `ServiceNowTicketEventUseCaseController` (`{base}.rest.v1.controllers`)
 1. `@Path("/api/v1/up/marketplace-executor/webhooks/servicenow")`, `@Produces(MediaType.APPLICATION_JSON)`, `@Consumes(MediaType.APPLICATION_JSON)`, `@Tag(name = "ServiceNow Ticket Events", description = "Webhook called by ServiceNow (through the blindata-agent proxy) when a ticket changes state")`.
 2. `@POST @Path("/ticket-events") public TicketEventResultRes receiveTicketEvent(@RequestBody TicketEventCommandRes body)` calls `useCasesService.processTicketEvent(body)`.
 3. OpenAPI responses:
    - `200`: reported or ignored, with body `TicketEventResultRes`
    - `500`: marketplace or ServiceNow processing failure, meaning ServiceNow should retry
-4. Update `MarketplaceExecutorUseCaseResource` OpenAPI: add `@APIResponse(responseCode = "409", description = "Request not handled by this executor (request filter)")`.
+4. Update `MarketplaceExecutorUseCaseController` OpenAPI: add `@APIResponse(responseCode = "409", description = "Request not handled by this executor (request filter)")`.
 
 ### 18. Update Tests
-1. Replace `MarketplaceExecutorUseCaseResourceTest.validSubscribeRequestIsAccepted`:
+1. Replace `MarketplaceExecutorUseCaseControllerTest.validSubscribeRequestIsAccepted`:
    - stub `restUtils.genericPost(contains("/api/now/table/incident"), any(), any(), eq(JsonNode.class))` to return `{"result":{"number":"INC0010001","sys_id":"abc"}}`
    - verify that the PENDING result is posted to `/requests/id-1/results`
    - the request body uses `dataProductFqn: "urn:dp:finance:sales"`
@@ -845,8 +843,8 @@ Feature: Configuration safety
 
 | Feature / Scenario | Test class | Method |
 | --- | --- | --- |
-| Open ticket / Subscribe request opens a Table API ticket and reports PENDING | `MarketplaceExecutorUseCaseResourceTest` | `whenSubscribeRequestThenTableTicketOpenedAndPendingReported` |
-| Open ticket / Unsubscribe request opens an Import Set ticket | `MarketplaceExecutorUseCaseResourceTest` | `whenUnsubscribeRequestThenImportSetRowPostedAndPendingReported` |
+| Open ticket / Subscribe request opens a Table API ticket and reports PENDING | `MarketplaceExecutorUseCaseControllerTest` | `whenSubscribeRequestThenTableTicketOpenedAndPendingReported` |
+| Open ticket / Unsubscribe request opens an Import Set ticket | `MarketplaceExecutorUseCaseControllerTest` | `whenUnsubscribeRequestThenImportSetRowPostedAndPendingReported` |
 | Open ticket / Import Set transform error is reported as ERROR | `ImportSetTicketCreatorTest` | `whenRowStatusErrorThenTicketCreationFails` + `ProcessMarketplaceRequestTest.whenTicketCreationFailsThenErrorReported` |
 | Open ticket / Service Catalog two-step checkout submits the cart | `ServiceCatalogTicketCreatorTest` | `whenOrderNowReturnsCartThenCartSubmitted` |
 | Open ticket / Scripted REST response without the configured number pointer is reported as ERROR | `ScriptedRestTicketCreatorTest` | `whenNumberPointerMissingThenTicketCreationFails` |
@@ -857,17 +855,17 @@ Feature: Configuration safety
 | Open ticket / Unknown requester fails the catalog order | `ServiceCatalogTicketCreatorTest` | `whenRequesterNotFoundThenTicketCreationFails` |
 | Filtering / Filter patterns are full-match regular expressions | `RequestFilterServiceTest` | `whenRegexPatternsThenFullMatchApplied` |
 | Webhook / Closing user is omitted when its inclusion is disabled | `ResultMessageServiceTest` | `whenClosingUserExcludedThenNotExposedToTemplates` |
-| Filtering / Request outside the filter is declined without side effects | `MarketplaceExecutorUseCaseResourceTest` | `whenRequestOutsideFilterThenConflictAndNoSideEffects` |
+| Filtering / Request outside the filter is declined without side effects | `MarketplaceExecutorUseCaseControllerTest` | `whenRequestOutsideFilterThenConflictAndNoSideEffects` |
 | Filtering / Request with only some ports inside the port filter is declined as a whole | `RequestFilterServiceTest` | `whenSomePortsDoNotMatchThenRequestNotAccepted` |
-| Webhook / Fulfilled subscribe ticket grants access for all ports | `ServiceNowTicketEventUseCaseResourceTest` | `whenSubscribeTicketFulfilledThenGrantedWithAllPorts` |
+| Webhook / Fulfilled subscribe ticket grants access for all ports | `ServiceNowTicketEventUseCaseControllerTest` | `whenSubscribeTicketFulfilledThenGrantedWithAllPorts` |
 | Webhook / Refused subscribe ticket denies access | `CompleteTicketTest` | `whenSubscribeTicketRefusedThenDenied` |
 | Webhook / Refused unsubscribe ticket is reported as a descriptive ERROR | `CompleteTicketTest` | `whenUnsubscribeTicketRefusedThenDescriptiveError` |
 | Webhook / Fulfilled unsubscribe ticket revokes access | `CompleteTicketTest` | `whenUnsubscribeTicketFulfilledThenRevoked` |
-| Webhook / First final status wins | `ServiceNowTicketEventUseCaseResourceTest` | `whenFinalResultExistsThenEventIgnored` |
+| Webhook / First final status wins | `ServiceNowTicketEventUseCaseControllerTest` | `whenFinalResultExistsThenEventIgnored` |
 | Webhook / Non-terminal ticket update is ignored | `CompleteTicketTest` | `whenNoRuleMatchesThenIgnoredAsNonTerminal` |
 | Webhook / Unknown correlation is ignored | `CompleteTicketTest` | `whenRequestUnknownThenIgnored` |
-| Webhook / Missing correlation is ignored | `ServiceNowTicketEventUseCaseResourceTest` | `whenCorrelationMissingThenIgnored` + `whenBodyEmptyThenIgnoredAsMissingCorrelation` |
-| Webhook / Marketplace unavailable makes the webhook fail for retry | `ServiceNowTicketEventUseCaseResourceTest` | `whenMarketplaceUnavailableThenServerError` |
+| Webhook / Missing correlation is ignored | `ServiceNowTicketEventUseCaseControllerTest` | `whenCorrelationMissingThenIgnored` + `whenBodyEmptyThenIgnoredAsMissingCorrelation` |
+| Webhook / Marketplace unavailable makes the webhook fail for retry | `ServiceNowTicketEventUseCaseControllerTest` | `whenMarketplaceUnavailableThenServerError` |
 | Config / Invalid configuration prevents startup | `ServiceNowConfigValidatorTest` | `whenFieldOverridesCorrelationThenValidationFails` |
 | Config / Missing template values render empty instead of failing | `TicketTemplateRendererTest` | `whenPropertyMissingThenRendersEmpty` |
 
@@ -927,9 +925,9 @@ Rewrite the README for the ServiceNow executor, keeping the existing visual styl
 ## Norms
 
 1. **Annotation standards** (`spdd/norms/README.md`, `spdd/norms/USE_CASE_IMPLEMENTATION.md`):
-   - `@Path` + `@Produces(MediaType.APPLICATION_JSON)` on `*UseCaseResource` in the unversioned `{base}.rest` package.
-   - OpenAPI annotations on resources: `@Tag`, `@Operation`, `@APIResponses`, `@RequestBody`, following the annotation flavour already used in `MarketplaceExecutorUseCaseResource`. `@Schema` goes on DTO fields.
-   - `@ApplicationScoped` only on factories, the use cases service, core services, creators, clients and the validator. **Never** on use case classes or `*OutboundPortImpl`.
+   - `@Path` + `@Produces(MediaType.APPLICATION_JSON)` on `*UseCaseController` in `{base}.rest.v1.controllers`; `*Res` DTOs in `{base}.rest.v1.resources.marketplace[.usecases.<verb>]`.
+   - OpenAPI annotations on controllers: `@Tag`, `@Operation`, `@APIResponses`, `@RequestBody`, following the annotation flavour already used in `MarketplaceExecutorUseCaseController`. `@Schema` goes on DTO fields.
+   - `@ApplicationScoped` only on factories, the use cases service, clients, creators, the filter and outcome-rule services and the validator. **Never** on use case classes or `*OutboundPortImpl`.
    - `@ConfigMapping` interfaces for configuration, with `@WithDefault` for defaults.
 2. **Dependency injection**:
    - Constructor injection everywhere.
@@ -940,7 +938,7 @@ Rewrite the README for the ServiceNow executor, keeping the existing visual styl
    - Throw `BadRequestException`, `NotFoundException`, `ResourceConflictException`, `InternalException` and the new `RequestNotHandledException` (all extend `OdmApiException` with `getErrorName()` and `getStatus()`).
    - The existing `ResponseExceptionMapper` produces `ErrorResponse {timestamp, status, error, message, path}`. Do not add another mapper.
    - Messages must be descriptive but must never contain secrets (`README.md` › Exceptions and API errors).
-   - `ClientException` and `ClientResourceMappingException` are translated inside adapters and core clients, never leaked to use cases.
+   - `ClientException` and `ClientResourceMappingException` are translated inside adapters and clients, never leaked to use cases.
 4. **Data validation**:
    - Keep the bean validation on `MarketplaceRequestRes` and the existing `enforceInvariants()`.
    - Use cases validate early in `execute()` and fail fast (`README.md` › Data validation).
@@ -949,7 +947,8 @@ Rewrite the README for the ServiceNow executor, keeping the existing visual styl
    - No `*Res` types inside `{base}.marketplace.services.usecases.*`.
    - Commands and presenters use domain records and enums only.
    - `MarketplaceExecutorUseCasesService` is the only bridge from `*Res` to commands.
-   - Business policy lives in the use case and mechanics live in adapters or core services (`USE_CASE_IMPLEMENTATION.md` §5, "Business logic vs implementation detail").
+   - No core package: the executor owns no entities. Outbound integrations are clients in `{base}.client.<system>`; collaborators that are not clients stay in `{base}.marketplace.services` (`USE_CASE_IMPLEMENTATION.md` §9).
+   - Business policy lives in the use case and mechanics live in adapters, clients or services (`USE_CASE_IMPLEMENTATION.md` §5, "Business logic vs implementation detail").
 6. **Code structure** (`spdd/norms/CODE_STRUCTURE.md`):
    - Composed method (step-down). Each public method is a short outline of named private steps at one abstraction level.
    - Method bodies stay well under ~200 lines.
@@ -1017,4 +1016,4 @@ Rewrite the README for the ServiceNow executor, keeping the existing visual styl
 9. **API constraints**:
    - New endpoint `POST /api/v1/up/marketplace-executor/webhooks/servicenow/ticket-events`: request `TicketEventCommandRes {correlationId, fields}`, response `TicketEventResultRes {outcome, status, reason}`, with status codes `200` and `500` (and `400` only for malformed JSON).
    - It is documented in OpenAPI under the tag "ServiceNow Ticket Events".
-   - `MarketplaceExecutorUseCaseResource` documents `202`, `400`, `409` and `500`.
+   - `MarketplaceExecutorUseCaseController` documents `202`, `400`, `409` and `500`.
