@@ -4,7 +4,7 @@
 
 ## Overview (in plain words)
 
-The executor is a small, stateless Java service. You build it (or take a build), give it a configuration file and a few secrets, start it, and tell the ODM Marketplace Service where it lives. After that, a test request should create a ticket in ServiceNow. This page walks through those steps. The repository does not ship a Dockerfile, Helm chart or Kubernetes manifests: run the service however your platform runs Java 21 applications.
+The executor is a small, stateless Java service. You take the ready-made Docker image (or build it), give it a configuration file and a few secrets, start it, and tell the ODM Marketplace Service where it lives. After that, a test request should create a ticket in ServiceNow. This page walks through those steps. Every release is published as a Docker image on GitHub Container Registry and Docker Hub, built by GitHub Actions. The repository does not ship a Helm chart or Kubernetes manifests; the image runs on any container platform, and the JVM build also runs as a plain Java 21 process.
 
 ## Contents
 
@@ -12,14 +12,18 @@ The executor is a small, stateless Java service. You build it (or take a build),
 - [Build](#build)
 - [Configure](#configure)
 - [Run](#run)
-- [Deployment notes](#deployment-notes)
+- [Run with Docker](#run-with-docker)
+- [Container configuration](#container-configuration)
+- [Deploy](#deploy)
 - [Register with the Marketplace Service](#register-with-the-marketplace-service)
 - [Verify](#verify)
 - [Tests](#tests)
+- [CI/CD and releases](#cicd-and-releases)
 
 ## Requirements
 
-- Java **21** and Maven **3.9+** (or the included `./mvnw`) to build. The project is Quarkus 3.40.1.
+- To run the published image: Docker (or any container runtime). Nothing else on the host.
+- To build from source: Java **21** and Maven **3.9+** (or the included `./mvnw`). The project is Quarkus 3.40.1. A native image build also needs Docker (no local GraalVM or Mandrel is required).
 - A ServiceNow instance, Washington DC or later, prepared as in [ServiceNow setup](servicenow-setup.md).
 - A running ODM Marketplace Service (default address `http://localhost:8085`).
 - An authenticating gateway (reverse proxy) for the webhook leg: see [Securing the webhook](servicenow-setup.md#5-securing-the-webhook).
@@ -31,10 +35,10 @@ git clone <repository-url>
 cd odm-platform-adapter-marketplace-executor-servicenow
 
 ./mvnw package                  # JVM build, runner in target/quarkus-app/
-./mvnw -Pnative package         # native build (Mandrel or GraalVM 21)
+./mvnw -Pnative package         # native build (Mandrel or GraalVM 21 installed locally)
 ```
 
-The JVM build is started with `java -jar target/quarkus-app/quarkus-run.jar`. The artifact is `org.opendatamesh:odm-platform-adapter-marketplace-executor-servicenow` (version in `pom.xml`).
+The JVM build is started with `java -jar target/quarkus-app/quarkus-run.jar`. The artifact is `org.opendatamesh:odm-platform-adapter-marketplace-executor-servicenow` (version in `pom.xml`). To build the native executable that goes into the Docker image, see [Build the image locally](#build-the-image-locally).
 
 ## Configure
 
@@ -78,9 +82,81 @@ The executor listens on port **9019** (`quarkus.http.port`, override with `QUARK
 
 > **The executor refuses to start with an invalid configuration** and prints a numbered list of the problems (blank instance URL, missing credentials, unparsable template, profile without a `FULFILLED` rule, invalid regex, ...). Fix them and start again. Secrets are never printed. See [Troubleshooting](troubleshooting.md#the-executor-does-not-start).
 
-## Deployment notes
+## Run with Docker
 
-- **Containers / Kubernetes.** No image or manifests are provided. If you containerise the JVM build, copy the whole `target/quarkus-app/` directory (not just the jar), mount your `config/application.yml` (or set `QUARKUS_CONFIG_LOCATIONS`), and inject the `SERVICENOW_*` values from your secret store as environment variables. Expose port `9019` only inside the cluster.
+The image contains the Quarkus **native** executable on `ubi9/ubi-minimal`. It runs as the non-root user `1001`, listens on port **9019** and needs no Java installation. Settings are passed as environment variables, plus a mounted file for the ticket profiles.
+
+### Use the published image
+
+Every release is published to two registries:
+
+```bash
+docker pull ghcr.io/opendatamesh-initiative/odm-platform-adapter-marketplace-executor-servicenow:<version>
+# or
+docker pull opendatamesh/odm-platform-adapter-marketplace-executor-servicenow:<version>
+```
+
+Run it with the ticket profiles mounted where the executor looks for them (`/work/config/application.yml`):
+
+```bash
+docker run --rm -p 9019:9019 \
+  -e SERVICENOW_INSTANCE_URL=https://acme.service-now.com \
+  -e SERVICENOW_CLIENT_ID=<oauth application client id> \
+  -e SERVICENOW_CLIENT_SECRET=<oauth application client secret> \
+  -e ODM_PRODUCT_PLANE_MARKETPLACE_SERVICE_ADDRESS=http://host.docker.internal:8085 \
+  -v "$(pwd)/config/application.yml:/work/config/application.yml:ro" \
+  ghcr.io/opendatamesh-initiative/odm-platform-adapter-marketplace-executor-servicenow:<version>
+```
+
+Replace `<version>` with a released version (for example `1.0.2`). `host.docker.internal` reaches a Marketplace Service running on the Docker host (on Linux add `--add-host=host.docker.internal:host-gateway`); in a real deployment use the service's real address. For API key authentication pass `-e SERVICENOW_AUTH_TYPE=API_KEY -e SERVICENOW_API_KEY=...` instead of the client id and secret. To keep secrets out of the command line, use `--env-file`.
+
+### Build the image locally
+
+You need Docker; no local GraalVM or Mandrel. The native executable is built inside a builder container, then copied into the runtime image:
+
+```bash
+./mvnw package -DskipTests -Dnative -Dquarkus.native.container-build=true
+docker build -t odm-platform-adapter-marketplace-executor-servicenow .
+```
+
+The `Dockerfile` copies `target/*-runner` to `/work/application`, so the native build must run first. It takes several minutes.
+
+## Container configuration
+
+- **Environment variables.** The same ones as in [Configure](#configure); every property can be set this way ([configuration reference](configuration-reference.md)). Credentials (`SERVICENOW_CLIENT_SECRET`, `SERVICENOW_API_KEY`) go in secrets, not in the image or a committed file.
+- **Ticket profiles.** The packaged `application.yml` has no `servicenow.profiles`, so the container will not start without them. The container working directory is `/work` and the executor reads `config/application.yml` relative to it: mount your file at `/work/config/application.yml`. Alternatively mount it anywhere and set `QUARKUS_CONFIG_LOCATIONS` to its path (for example `-e QUARKUS_CONFIG_LOCATIONS=/etc/executor/application.yml`). Other properties can be set in that file instead of environment variables.
+- **Port.** `9019` is exposed. Override with `QUARKUS_HTTP_PORT` if needed and map it accordingly.
+- **User.** The process runs as user `1001` (group `root`, as OpenShift-style platforms expect). Mounted files must be readable by it.
+- **Startup validation.** The container exits with a numbered list of problems if the configuration is invalid; read them with `docker logs`.
+
+## Deploy
+
+- **Containers / Kubernetes.** Use the published image. Mount your `config/application.yml` at `/work/config/application.yml` (or set `QUARKUS_CONFIG_LOCATIONS`), and inject the `SERVICENOW_*` values from your secret store as environment variables. Expose port `9019` only inside the cluster. A sketch of the container spec:
+
+  ```yaml
+  containers:
+    - name: executor
+      image: ghcr.io/opendatamesh-initiative/odm-platform-adapter-marketplace-executor-servicenow:<version>
+      ports:
+        - containerPort: 9019
+      envFrom:
+        - secretRef:
+            name: servicenow-executor-credentials   # SERVICENOW_CLIENT_ID, SERVICENOW_CLIENT_SECRET
+      env:
+        - name: SERVICENOW_INSTANCE_URL
+          value: https://acme.service-now.com
+        - name: ODM_PRODUCT_PLANE_MARKETPLACE_SERVICE_ADDRESS
+          value: http://marketplace-service:8085
+      volumeMounts:
+        - name: profiles
+          mountPath: /work/config
+  volumes:
+    - name: profiles
+      configMap:
+        name: servicenow-executor-profiles           # key: application.yml
+  ```
+
+  Use a cluster-internal `Service` only, and a `NetworkPolicy` that admits just the Marketplace Service and the gateway.
 - **Network isolation (hard requirement).** The webhook has no authentication of its own. The executor must be reachable **only** by the Marketplace Service and by the authenticating gateway: never directly from ServiceNow or the internet. See [ServiceNow setup](servicenow-setup.md#5-securing-the-webhook).
 - **Egress.** The executor must reach the ServiceNow instance (HTTPS) and the Marketplace Service.
 - **Several executors** behind one Marketplace Service need exclusive filters: see [Concepts](concepts.md#request-filter).
@@ -113,6 +189,30 @@ The `name` is free. Restart the Marketplace Service if it does not reload config
 ```bash
 ./mvnw test      # outbound calls are mocked
 ```
+
+## CI/CD and releases
+
+Two GitHub Actions workflows live in `.github/workflows/`:
+
+| Workflow | Runs on | What it does |
+|:--|:--|:--|
+| `ci.yml` | Every push and pull request to `main` | Sets up JDK 21 (Temurin) and runs `./mvnw -B verify` |
+| `cicd.yml` | A GitHub release is created | Checks the version, runs the tests, builds the native image and publishes it |
+
+On a release, `cicd.yml` runs two jobs in sequence:
+
+1. **`verify-version`** takes the release tag, strips every character that is not a digit or a dot (`v1.0.2` becomes `1.0.2`) and compares it with the version in `pom.xml`. If they differ, the workflow fails. It then runs the tests.
+2. **`deploy-docker-images`** builds the native executable (`./mvnw -B package -DskipTests -Dnative -Dquarkus.native.container-build=true`), builds the image from the `Dockerfile` and pushes it, tagged with the release version, to:
+   - GitHub Container Registry, with the workflow's `GITHUB_TOKEN`: `ghcr.io/opendatamesh-initiative/odm-platform-adapter-marketplace-executor-servicenow:<version>`
+   - Docker Hub: `opendatamesh/odm-platform-adapter-marketplace-executor-servicenow:<version>`. This needs the repository secrets `DOCKER_USERNAME` and `DOCKER_PASSWORD`.
+
+To make a release:
+
+1. Set the POM version to the release version, without `-SNAPSHOT` (for example `1.0.2`).
+2. Merge the change to `main`.
+3. Create a GitHub release with a tag that matches it: `v1.0.2` or `1.0.2`.
+4. Check that the workflow is green and that the image is available in both registries.
+5. Bump the POM to the next `-SNAPSHOT` version.
 
 ---
 [Back to README](../README.md) | [Troubleshooting](troubleshooting.md)

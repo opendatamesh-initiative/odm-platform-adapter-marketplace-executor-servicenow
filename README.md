@@ -59,7 +59,9 @@ flowchart LR
 
 ## Quick start
 
-Requirements: Java 21, Maven 3.9+ (or `./mvnw`), a ServiceNow instance (Washington DC or later), a running ODM Marketplace Service, and an authenticating gateway (reverse proxy) in front of the webhook for the callback leg.
+Requirements: Java 21 and Maven 3.9+ (or `./mvnw`) for the Maven option, or Docker for the image option; a ServiceNow instance (Washington DC or later), a running ODM Marketplace Service, and an authenticating gateway (reverse proxy) in front of the webhook for the callback leg.
+
+**With Maven**
 
 ```bash
 export SERVICENOW_INSTANCE_URL=https://acme.service-now.com
@@ -70,7 +72,21 @@ export ODM_PRODUCT_PLANE_MARKETPLACE_SERVICE_ADDRESS=http://localhost:8085
 ./mvnw quarkus:dev          # listens on port 9019
 ```
 
-The executor needs ticket profiles in `config/application.yml` (none are packaged): copy one from the [use cases](docs/use-cases.md), then follow [Provisioning](docs/provisioning.md) and [ServiceNow setup](docs/servicenow-setup.md). Swagger UI is at `http://localhost:9019/swagger-ui`.
+**With Docker** (published on every release, no Java needed)
+
+```bash
+docker run --rm -p 9019:9019 \
+  -e SERVICENOW_INSTANCE_URL=https://acme.service-now.com \
+  -e SERVICENOW_CLIENT_ID=<oauth application client id> \
+  -e SERVICENOW_CLIENT_SECRET=<oauth application client secret> \
+  -e ODM_PRODUCT_PLANE_MARKETPLACE_SERVICE_ADDRESS=http://host.docker.internal:8085 \
+  -v "$(pwd)/config/application.yml:/work/config/application.yml:ro" \
+  ghcr.io/opendatamesh-initiative/odm-platform-adapter-marketplace-executor-servicenow:<version>
+```
+
+The image is also on Docker Hub as `opendatamesh/odm-platform-adapter-marketplace-executor-servicenow`.
+
+The executor needs ticket profiles in `config/application.yml` (none are packaged; mount the file at `/work/config/application.yml` in the container): copy one from the [use cases](docs/use-cases.md), then follow [Provisioning](docs/provisioning.md) and [ServiceNow setup](docs/servicenow-setup.md). Swagger UI is at `http://localhost:9019/swagger-ui`.
 
 > The webhook that ServiceNow calls has no authentication of its own: keep the executor reachable only by the Marketplace Service and the authenticating gateway that fronts the webhook.
 
@@ -85,7 +101,7 @@ The executor needs ticket profiles in `config/application.yml` (none are package
 | [Use case: Import Set](docs/use-case-import-set.md) | Configure and set up staging table and transform map |
 | [Use case: Scripted REST](docs/use-case-scripted-rest.md) | Configure and set up your own endpoint |
 | [ServiceNow setup](docs/servicenow-setup.md) | Integration user, OAuth or API key, access policies, webhook security, Business Rule |
-| [Provisioning](docs/provisioning.md) | Build, configure, run, register with the Marketplace Service, verify |
+| [Provisioning](docs/provisioning.md) | Build, configure, run (Maven or Docker), deploy, CI/CD and releases, register with the Marketplace Service, verify |
 | [Configuration reference](docs/configuration-reference.md) | Every property, env var, default and requirement |
 | [Message templates and privacy](docs/message-templates.md) | Qute syntax, data model, default messages, closing-user privacy |
 | [API reference](docs/api-reference.md) | Executor endpoints, payloads and webhook answers |
