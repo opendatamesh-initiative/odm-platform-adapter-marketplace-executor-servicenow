@@ -1,210 +1,128 @@
-# ODM Platform Marketplace Executor Starter
+# ODM Platform Marketplace Executor for ServiceNow
 
-> A starter project for building a **Marketplace Executor** for the [Open Data Mesh Platform](https://dpds.opendatamesh.org/) —
-> grant and revoke access to data products on your enterprise tools.
+> Fulfil the access requests of the [Open Data Mesh Platform](https://dpds.opendatamesh.org/) marketplace through **ServiceNow tickets**: a ticket is opened for every subscribe or unsubscribe, and the request is completed when the ticket is closed on ServiceNow.
 
-<p align="center">
-  <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg?style=flat-square" alt="License: Apache 2.0"></a>
-</p>
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg?style=flat-square)](https://opensource.org/licenses/Apache-2.0)
+[![Java 21](https://img.shields.io/badge/Java-21-ED8B00.svg?style=flat-square&logo=openjdk&logoColor=white)](https://openjdk.org/)
+[![Quarkus 3.40](https://img.shields.io/badge/Quarkus-3.40-4695EB.svg?style=flat-square&logo=quarkus&logoColor=white)](https://quarkus.io/)
+[![ServiceNow Washington DC+](https://img.shields.io/badge/ServiceNow-Washington_DC+-62D84E.svg?style=flat-square)](https://www.servicenow.com/)
 
-<p align="center">
-  <a href="https://openjdk.org/"><img src="https://img.shields.io/badge/Java-21-ED8B00.svg?style=flat-square&logo=openjdk&logoColor=white" alt="Java 21"></a>
-  <a href="https://quarkus.io/"><img src="https://img.shields.io/badge/Quarkus-3.40-4695EB.svg?style=flat-square&logo=quarkus&logoColor=white" alt="Quarkus 3.40"></a>
-</p>
+## What is it?
 
-<p align="center">
-  <a href="#what-the-executor-does">What the executor does</a> ·
-  <a href="#quick-start-local">Quick start</a> ·
-  <a href="#executor-api">Executor API</a> ·
-  <a href="#implement-your-executor">Implement your executor</a> ·
-  <a href="#contributing">Contributing</a>
-</p>
+A data marketplace lets people ask for access to data products. Somebody then has to approve and grant that access, and in most companies that work is already done in **ServiceNow**, with its tickets, approvals and audit trail.
 
----
+The **Marketplace Executor for ServiceNow** connects the two. When a person asks for access to a data product (or asks for it to be removed), the executor opens the matching ServiceNow ticket. When the ticket is closed, it tells the marketplace whether access was granted, denied, revoked or failed, with a readable message.
 
-## What the executor does
+## The problem it solves
 
-The Marketplace Executor is the component that bridges the **Data Product Catalog** and your enterprise tools. It manages access to the data products listed in the catalog, turning the catalog into a true **Data Product marketplace**.
+- **No second process.** Access to data products follows the approval and fulfilment process your organisation already runs in ServiceNow.
+- **No copy and paste.** Requests do not travel by email or spreadsheet: the ticket is created with the data product, ports, consumer, requester and dates already filled in.
+- **No blind spots.** The requester sees in the marketplace which ticket is handling the request and how it ended.
 
-- The **Marketplace Service** receives an access request (subscribe or unsubscribe) and forwards it to the executor.
-- The executor **grants or revokes access** on the target tool. The complexity of orchestrating multiple calls is delegated to it.
-- The executor **reports the outcome** back to the Marketplace Service, asynchronously.
+## How it works
 
 ```mermaid
-sequenceDiagram
-  participant M as Marketplace Service
-  participant E as Marketplace Executor
-  participant T as Enterprise tool
-  M->>E: POST /requests (subscribe / unsubscribe)
-  E-->>M: 202 Accepted
-  E->>T: grant or revoke access
-  E->>M: POST /requests/{identifier}/results
+flowchart LR
+  U[Consumer requests access<br/>in the marketplace] --> M[Marketplace Service]
+  M --> E[Marketplace Executor]
+  E -->|creates ticket| SN[ServiceNow<br/>approval and fulfilment]
+  E -.->|PENDING: ticket number and link| M
+  SN -->|ticket closed| A[Auth gateway]
+  A --> E
+  E -->|GRANTED, DENIED, REVOKED or ERROR| M
 ```
 
-This starter is stateless (no database) and is meant to be **forked and customized**.
+1. A consumer requests access to a data product in the marketplace.
+2. The executor opens **one ServiceNow ticket** for the whole request (all ports) and reports `PENDING`, with the ticket number and link.
+3. People work the ticket in ServiceNow: approve, grant the permissions, close it.
+4. ServiceNow notifies the executor, which turns the ticket outcome into the final status and tells the marketplace.
 
----
+## Main capabilities
 
-## Quick start (local)
+- **Four ways to create the ticket**: a record in any table (for example `incident`), a Service Catalog order placed on behalf of the requester, an Import Set row transformed by ServiceNow, or your own Scripted REST API.
+- **Everything is configuration**: ticket content, which ticket states mean "approved" or "rejected", and the messages shown in the marketplace, with no code.
+- **Subscribe and unsubscribe**: each has its own ticket definition and outcome mapping.
+- **Request filter**: route only some data products, consumers or requests to ServiceNow, so several executors can coexist.
+- **Stateless and safe to retry**: the ticket carries the request id; results are retried and the first final status wins.
+- **Privacy switch**: keep the name of the ServiceNow user who closed the ticket out of marketplace messages.
 
-**Requirements:** Java **21** · Maven **3.9+** (or the included `./mvnw`)
+## Use cases
+
+| Use case | What happens |
+|:--|:--|
+| Simple access ticket | A consumer requests access, an `incident` (or any table record) is created for the data governance team, resolving it grants the access. See [Table API](docs/use-case-table-api.md) |
+| Approval workflow | The request becomes the consumer's own catalog order, goes through your approvals, and a rejection becomes `DENIED` in the marketplace. See [Service Catalog](docs/use-case-service-catalog.md) |
+| Transform-map driven intake | The request lands in a staging table and ServiceNow transforms it into a task. See [Import Set](docs/use-case-import-set.md) |
+| Custom ticket logic | Your Scripted REST API decides assignment group and defaults. See [Scripted REST](docs/use-case-scripted-rest.md) |
+| Access removal | An unsubscribe opens a revoke ticket; closing it marks the request `REVOKED`. Works with any of the above |
+| Several systems | A request for finance data goes to ServiceNow, others to another executor, by filter. See [Use cases](docs/use-cases.md#cross-cutting-scenarios) |
+
+## Quick start
+
+Requirements: Java 21 and Maven 3.9+ (or `./mvnw`) for the Maven option, or Docker for the image option; a ServiceNow instance (Washington DC or later), a running ODM Marketplace Service, and an authenticating gateway (reverse proxy) in front of the webhook for the callback leg.
+
+**With Maven**
 
 ```bash
-git clone https://github.com/opendatamesh-initiative/odm-platform-adapter-marketplace-executor-starter.git
-cd odm-platform-adapter-marketplace-executor-starter
+export SERVICENOW_INSTANCE_URL=https://acme.service-now.com
+export SERVICENOW_CLIENT_ID=<oauth application client id>
+export SERVICENOW_CLIENT_SECRET=<oauth application client secret>
+export ODM_PRODUCT_PLANE_MARKETPLACE_SERVICE_ADDRESS=http://localhost:8085
 
-./mvnw quarkus:dev
+./mvnw quarkus:dev          # listens on port 9019
 ```
 
-The executor listens on port **9019** (`quarkus.http.port` in `application.yml`). When it is up:
-
-| | Endpoint |
-|:--|:---------|
-| **Swagger UI** | [http://localhost:9019/swagger-ui](http://localhost:9019/swagger-ui) |
-| **OpenAPI** | [http://localhost:9019/api-docs](http://localhost:9019/api-docs) |
-
-Other builds:
+**With Docker** (published on every release, no Java needed)
 
 ```bash
-./mvnw package                  # JVM build, runner in target/quarkus-app/
-./mvnw -Pnative package         # native build (Mandrel or GraalVM 21)
-./mvnw test                     # tests (outbound calls are mocked)
+docker run --rm -p 9019:9019 \
+  -e SERVICENOW_INSTANCE_URL=https://acme.service-now.com \
+  -e SERVICENOW_CLIENT_ID=<oauth application client id> \
+  -e SERVICENOW_CLIENT_SECRET=<oauth application client secret> \
+  -e ODM_PRODUCT_PLANE_MARKETPLACE_SERVICE_ADDRESS=http://host.docker.internal:8085 \
+  -v "$(pwd)/config/application.yml:/work/config/application.yml:ro" \
+  ghcr.io/opendatamesh-initiative/odm-platform-adapter-marketplace-executor-servicenow:<version>
 ```
 
----
+The image is also on Docker Hub as `opendatamesh/odm-platform-adapter-marketplace-executor-servicenow`.
 
-## Executor API
+The executor needs ticket profiles in `config/application.yml` (none are packaged; mount the file at `/work/config/application.yml` in the container): copy one from the [use cases](docs/use-cases.md), then follow [Provisioning](docs/provisioning.md) and [ServiceNow setup](docs/servicenow-setup.md). Swagger UI is at `http://localhost:9019/swagger-ui`.
 
-The Marketplace Service calls a single endpoint:
+> The webhook that ServiceNow calls has no authentication of its own: keep the executor reachable only by the Marketplace Service and the authenticating gateway that fronts the webhook.
 
-```
-POST {executorBaseUrl}/api/v1/up/marketplace-executor/requests
-```
+## Documentation
 
-It answers **202 Accepted** and processes the request asynchronously. An invalid request returns **400** with an error body.
-
-<details open>
-<summary><strong>Request</strong></summary>
-
-<br>
-
-```json
-{
-  "v": "1",
-  "operation": "MARKETPLACE_SUBSCRIBE | MARKETPLACE_UNSUBSCRIBE",
-  "request": {
-    "name": "",
-    "identifier": "",
-    "provider": {
-      "dataProductFqn": "",
-      "dataProductPortsFqn": [""]
-    },
-    "consumer": {
-      "type": "dataproduct | user | team",
-      "identifier": "fqn | email | ?"
-    },
-    "requester": {
-      "type": "user",
-      "identifier": "email"
-    },
-    "properties": {},
-    "startDate": "Date",
-    "endDate": "Date"
-  }
-}
-```
-
-</details>
-
-<details open>
-<summary><strong>Result sent to the Marketplace Service</strong></summary>
-
-<br>
-
-Once processed, the executor posts the result to
-`{marketplaceServiceAddress}/api/v1/pp/marketplace/requests/{identifier}/results`:
-
-```json
-{
-  "status": "PENDING | GRANTED | DENIED | REVOKED | ERROR",
-  "message": "",
-  "provider": {
-    "dataProductFqn": "",
-    "dataProductPortsFqn": [""]
-  },
-  "createdAt": "Date"
-}
-```
-
-</details>
-
-| Status | Meaning |
-|:-------|:--------|
-| `PENDING` | The grant process has started but needs additional work |
-| `GRANTED` | The permissions have been correctly granted |
-| `DENIED` | The grant process has been denied |
-| `REVOKED` | The permissions have been correctly revoked |
-| `ERROR` | An error occurred during the process |
-
----
-
-## Implement your executor
-
-1. Fork this repository
-2. Implement `MarketplaceAccessOutboundPortImpl` (package `marketplace.services.usecases.processrequest`) with the grant and revoke logic of your enterprise tool
-3. Set the Marketplace Service address in `src/main/resources/application.yml`:
-
-```yaml
-odm:
-  product-plane:
-    marketplace-service:
-      active: true
-      address: http://localhost:8085
-```
-
-4. Build and deploy your custom executor
-
-**Implementation notes**
-
-- Each request has a unique `identifier` generated by the Marketplace Service
-- Keep detailed logs of the resources created during the access grant process
-- Implement error handling and rollback as needed
-- Access can be time-bound through `startDate` and `endDate`
-
-**Code layout**
-
-| Package | Role |
-|:--------|:-----|
-| `rest` | JAX-RS resource and error mapping |
-| `marketplace.services` | Use cases service: maps API resources to domain commands |
-| `marketplace.services.usecases.processrequest` | Use case, ports, adapters, factory |
-| `utils`, `exceptions` | Shared utilities from the template |
-
-Conventions live in [`spdd/norms/`](spdd/norms/README.md).
-
----
+| Document | Contents |
+|:--|:--|
+| [Concepts](docs/concepts.md) | Architecture, request lifecycle, mapping to ServiceNow records, status rules, request filter |
+| [Use cases](docs/use-cases.md) | Which ticket type to choose, shared example, cross-cutting scenarios |
+| [Use case: Table API](docs/use-case-table-api.md) | Configure and set up the `incident` / any-table flow |
+| [Use case: Service Catalog](docs/use-case-service-catalog.md) | Configure and set up catalog orders on behalf of the requester |
+| [Use case: Import Set](docs/use-case-import-set.md) | Configure and set up staging table and transform map |
+| [Use case: Scripted REST](docs/use-case-scripted-rest.md) | Configure and set up your own endpoint |
+| [ServiceNow setup](docs/servicenow-setup.md) | Integration user, OAuth or API key, access policies, webhook security, Business Rule |
+| [Provisioning](docs/provisioning.md) | Build, configure, run (Maven or Docker), deploy, CI/CD and releases, register with the Marketplace Service, verify |
+| [Configuration reference](docs/configuration-reference.md) | Every property, env var, default and requirement |
+| [Message templates and privacy](docs/message-templates.md) | Qute syntax, data model, default messages, closing-user privacy |
+| [API reference](docs/api-reference.md) | Executor endpoints, payloads and webhook answers |
+| [Troubleshooting](docs/troubleshooting.md) | Startup errors, `ERROR` and `PENDING` diagnosis, logs |
 
 ## Related links
 
 - [Open Data Mesh Architecture](https://platform.opendatamesh.org/architecture/)
 - [ODM Initiative Discussion](https://github.com/orgs/opendatamesh-initiative/discussions/1)
-
----
+- Project conventions: [`spdd/norms/`](spdd/norms/README.md)
 
 ## Contributing
 
-This is a starter project intended to be forked and customized.
+This project is intended to be forked and customised.
 
-1. Fork the repository and create a feature branch
-2. Make your changes with clear commits
-3. Open a pull request against the main branch
+1. Fork the repository and create a feature branch.
+2. Make your changes with clear commits.
+3. Open a pull request against the main branch.
 
-Questions or proposals → [ODM Initiative Discussion](https://github.com/orgs/opendatamesh-initiative/discussions/1).
-
----
+Questions or proposals: [ODM Initiative Discussion](https://github.com/orgs/opendatamesh-initiative/discussions/1).
 
 ## License
 
-Licensed under the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0).
-
-Part of the [Open Data Mesh Initiative](https://github.com/opendatamesh-initiative).
+Licensed under the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0). Part of the [Open Data Mesh Initiative](https://github.com/opendatamesh-initiative).

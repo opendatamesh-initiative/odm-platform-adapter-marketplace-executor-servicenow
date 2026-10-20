@@ -1,0 +1,97 @@
+quarkus:
+  application:
+    name: odm-platform-adapter-marketplace-executor-servicenow
+  http:
+    port: 9019
+  log:
+    console:
+      format: "%d{yyyy-MM-dd HH:mm:ss} [%t] %-5p %c{3.} - %s%e%n"
+  qute:
+    strict-rendering: false
+    property-not-found-strategy: noop
+  smallrye-openapi:
+    path: /api-docs
+    info-title: ODM Platform Adapter Marketplace Executor ServiceNow API
+    info-description: API for fulfilling marketplace subscription and unsubscription requests through ServiceNow tickets, and for receiving ServiceNow ticket events
+    info-version: v1.0.0
+    info-license-name: Apache 2.0
+    info-license-url: http://www.apache.org/licenses/LICENSE-2.0.html
+  swagger-ui:
+    always-include: true
+    path: /swagger-ui
+    operations-sorter: method
+    tags-sorter: alpha
+
+# ODM configuration
+odm:
+  product-plane:
+    marketplace-service:
+      active: true
+      address: http://localhost:8085
+      result-delivery:
+        max-attempts: 5
+        backoff: 10ms
+
+# ServiceNow configuration
+servicenow:
+  instance-url: https://test.service-now.com
+  auth:
+    type: API_KEY
+    api-key:
+      value: test-key
+  filter:
+    provider-data-product-fqns:
+      - "urn:dp:finance:.*"
+  profiles:
+    subscribe:
+      type: TABLE
+      target: incident
+      fields:
+        short_description: "Marketplace subscribe for {request.provider.dataProductFqn}"
+        description: >-
+          Marketplace request {request.identifier} ({operation}).
+          Data product: {request.provider.dataProductFqn}.
+          Ports: {#each request.provider.dataProductPortsFqn}{it}{#if it_hasNext}, {/if}{/each}.
+          Consumer: {request.consumer.type} {request.consumer.identifier}.
+          Requester: {request.requester.type} {request.requester.identifier}.
+          Start: {request.startDate}. End: {request.endDate}.
+        category: "inquiry"
+      outcome-rules:
+        - when:
+            state: "6|7"
+            close_code: "(?i)(Solved.*|Resolved.*)"
+          outcome: FULFILLED
+        - when:
+            state: "6|7"
+            close_code: "(?i)(Rejected|Not Solved.*)"
+          outcome: REFUSED
+        - when:
+            state: "8"
+          outcome: REFUSED
+    unsubscribe:
+      type: IMPORT_SET
+      target: u_marketplace_revoke
+      fields:
+        u_short_description: "Marketplace unsubscribe for {request.provider.dataProductFqn}"
+        u_requester: "{request.requester.identifier}"
+      outcome-rules:
+        - when:
+            state: "6|7"
+            close_code: "(?i)(Solved.*|Resolved.*)"
+          outcome: FULFILLED
+        - when:
+            state: "6|7"
+            close_code: "(?i)(Rejected|Not Solved.*)"
+          outcome: REFUSED
+        - when:
+            state: "8"
+          outcome: REFUSED
+  messages:
+    pending: "ServiceNow ticket {ticket.number} opened for {operation} of {request.provider.dataProductFqn} (ports: {#each request.provider.dataProductPortsFqn}{it}{#if it_hasNext}, {/if}{/each}). Awaiting fulfilment: {ticket.link}"
+    fulfilled: "{outcome.status} through ServiceNow ticket {ticket.number} ({ticket.link}){#if ticket.closedBy} closed by {ticket.closedBy}{/if}.{#if fields.close_notes} Close notes: {fields.close_notes}{/if}"
+    refused: "Request refused on ServiceNow: ticket {ticket.number} ({ticket.link}){#if ticket.closedBy} closed by {ticket.closedBy}{/if}.{#if fields.close_notes} Reason: {fields.close_notes}{/if}"
+    failed: "ServiceNow reported a failure on ticket {fields.number} ({ticket.link}).{#if fields.close_notes} Details: {fields.close_notes}{/if}"
+    technical-error: "Technical error while processing {operation} on ServiceNow: {error.message}"
+    closing-user:
+      include: ${SERVICENOW_MESSAGES_INCLUDE_CLOSING_USER:true}
+      field: closed_by
