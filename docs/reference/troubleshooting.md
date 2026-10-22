@@ -1,6 +1,6 @@
 # Troubleshooting and operations
 
-[Back to README](../README.md)
+[Back to README](../../README.md)
 
 ## Overview
 
@@ -90,4 +90,4 @@ Request headers, tokens, secrets and request bodies are never logged. The execut
 - **Privacy of messages.** See [Message templates](message-templates.md#privacy).
 
 ---
-[Back to README](../README.md) | [Configuration reference](configuration-reference.md)
+[Back to README](../../README.md) | [Configuration reference](configuration-reference.md)

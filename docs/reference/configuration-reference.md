@@ -1,10 +1,10 @@
 # Configuration reference
 
-[Back to README](../README.md)
+[Back to README](../../README.md)
 
 ## Overview
 
-Everything the executor does is driven by configuration: where ServiceNow is, how to log in, which requests to take, what the ticket looks like, and which ticket states mean "approved" or "rejected". This page lists every property. If you just want a working example, start from one of the [use cases](use-cases.md) and come back here for the details.
+Everything the executor does is driven by configuration: where ServiceNow is, how to log in, which requests to take, what the ticket looks like, and which ticket states mean "approved" or "rejected". This page lists every property. If you just want a working example, start from one of the [scenarios](../../README.md#1-pick-your-scenario) and come back here for the details.
 
 ## Contents
 
@@ -107,6 +107,11 @@ Table resolution precedence: for `TABLE`, `SERVICE_CATALOG` and `SCRIPTED_REST`,
 
 The ticket link is `{instance-url}/{table}.do?sys_id={sysId}`, empty when the table or sys_id is unknown. Response shapes vary with the release and the instance configuration: that is why the pointers are overridable.
 
+Creation errors, reported as `ERROR` and never followed by a `PENDING`:
+
+- **Import Set.** The API can answer *success* while no record was created. When the row status is `error` or `ignored`, the ticket is not considered opened and the message carries the ServiceNow text, for example `Technical error while processing MARKETPLACE_SUBSCRIBE on ServiceNow: Import Set transform did not create the ticket (status error): <error message>`. Check the transform map and the import log.
+- **Scripted REST.** If either pointer finds nothing in the answer, the creation fails (`ServiceNow response did not contain the ticket number at /result/number`). A non-2xx answer from your script is reported with the HTTP status and the body, truncated to 500 characters. Without a table (neither `table` nor a `table-pointer` result) the ticket link in messages is empty.
+
 ### Service Catalog requester resolution
 
 Catalog orders are placed **on behalf of the marketplace requester**. Before ordering, the executor looks up `GET /api/now/table/sys_user?sysparm_query={requester-match-field}={requester identifier}&sysparm_fields=sys_id&sysparm_limit=1` and sends the sys_id as `sysparm_requested_for`.
@@ -197,4 +202,4 @@ The executor refuses to start with an invalid configuration and prints a numbere
 Secrets are never printed. See [Troubleshooting](troubleshooting.md).
 
 ---
-[Back to README](../README.md) | [Provisioning](provisioning.md)
+[Back to README](../../README.md) | [Build, run locally and release](build-and-run.md)

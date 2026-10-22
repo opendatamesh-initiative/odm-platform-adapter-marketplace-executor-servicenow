@@ -1,6 +1,6 @@
 # Concepts: how the executor works
 
-[Back to README](../README.md)
+[Back to README](../../README.md)
 
 ## Overview
 
@@ -99,10 +99,10 @@ Four creation interfaces are supported, each one with its own endpoint and defau
 
 | `type` | Endpoint called | Guide |
 |:--|:--|:--|
-| `TABLE` | `POST /api/now/table/{target}` | [Table API](use-case-table-api.md) |
-| `SERVICE_CATALOG` | `POST /api/sn_sc/servicecatalog/items/{target}/order_now` | [Service Catalog](use-case-service-catalog.md) |
-| `IMPORT_SET` | `POST /api/now/import/{target}` | [Import Set](use-case-import-set.md) |
-| `SCRIPTED_REST` | `{method} {path}` | [Scripted REST](use-case-scripted-rest.md) |
+| `TABLE` | `POST /api/now/table/{target}` | [Table API](../scenarios/table-api.md) |
+| `SERVICE_CATALOG` | `POST /api/sn_sc/servicecatalog/items/{target}/order_now` | [Service Catalog](../scenarios/service-catalog.md) |
+| `IMPORT_SET` | `POST /api/now/import/{target}` | [Import Set](../scenarios/import-set.md) |
+| `SCRIPTED_REST` | `{method} {path}` | [Scripted REST](../scenarios/scripted-rest.md) |
 
 Going back, the webhook `fields` are matched against the profile's outcome rules to decide the final status, and are exposed to the final result message as `fields.*` and `ticket.*`.
 
@@ -155,4 +155,4 @@ Rules:
 - **Unsubscribe while the subscribe ticket is still open.** Two tickets exist at the same time. The executor does not resolve this: handle it in your ServiceNow process.
 
 ---
-Next: [Use cases](use-cases.md) | [Back to README](../README.md)
+Next: [Pick your scenario](../../README.md#1-pick-your-scenario) | [Back to README](../../README.md)

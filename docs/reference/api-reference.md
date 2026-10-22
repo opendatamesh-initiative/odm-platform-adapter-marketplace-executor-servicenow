@@ -1,6 +1,6 @@
 # API reference
 
-[Back to README](../README.md)
+[Back to README](../../README.md)
 
 ## Overview
 
@@ -141,4 +141,4 @@ Calls to the Marketplace Service carry no authentication headers.
 Errors raised by the executor are returned as JSON with the fields `timestamp`, `status`, `error`, `message` and `path`. Validation errors are `400` with the text `Errors: ...` listing the violated constraints. Unexpected exceptions are `500` with the message `Unknown Internal Server Error`.
 
 ---
-[Back to README](../README.md)
+[Back to README](../../README.md)
