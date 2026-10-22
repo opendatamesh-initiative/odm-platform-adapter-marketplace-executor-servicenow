@@ -1,6 +1,6 @@
 # ServiceNow setup (for ServiceNow administrators)
 
-[Back to README](../README.md)
+[Back to README](../../README.md)
 
 ## Overview
 
@@ -9,7 +9,7 @@ For the executor to work, ServiceNow must be prepared in two directions:
 1. **ServiceNow lets the executor in.** A dedicated service account, a way to log in (OAuth or API key) and permission to create the tickets.
 2. **ServiceNow calls the executor back.** When a ticket is completed, a Business Rule (or Flow) sends a small JSON message so the marketplace learns the outcome. That message goes through an **authenticating gateway**, which checks who is calling.
 
-This page covers the steps shared by every ticket type. The objects that depend on the ticket type (catalog items, staging tables, scripted APIs, Business Rule conditions) are in the [use case guides](use-cases.md).
+This page covers the steps shared by every ticket type. The objects that depend on the ticket type (catalog items, staging tables, scripted APIs, Business Rule conditions) are in the [scenario pages](../../README.md#1-pick-your-scenario).
 
 **Prerequisites:** ServiceNow **Washington DC or later** (OAuth 2.0 client credentials for inbound calls), and an **authenticating gateway** to authenticate the webhook (see [Securing the webhook](#5-securing-the-webhook)).
 
@@ -27,8 +27,8 @@ This page covers the steps shared by every ticket type. The objects that depend 
 
 Create a dedicated, non-interactive service user (for example `svc.odm.marketplace`, with **Web service access only** checked). Give it the **minimum** needed, through a dedicated role and ACLs:
 
-- **create** on each target table of your profiles ([Table API](use-case-table-api.md)), or write access to the staging table ([Import Set](use-case-import-set.md)), or the right to run your Scripted REST resource ([Scripted REST](use-case-scripted-rest.md));
-- the right to **order the catalog items** (availability, user criteria) and to order **on behalf of other users**, if you use the [Service Catalog](use-case-service-catalog.md);
+- **create** on each target table of your profiles ([Table API](../scenarios/table-api.md)), or write access to the staging table ([Import Set](../scenarios/import-set.md)), or the right to run your Scripted REST resource ([Scripted REST](../scenarios/scripted-rest.md));
+- the right to **order the catalog items** (availability, user criteria) and to order **on behalf of other users**, if you use the [Service Catalog](../scenarios/service-catalog.md);
 - **read** on `sys_user` (at least `sys_id` and the `requester-match-field`, by default `email`), for requester resolution.
 
 The one credential below is used for _every_ interface your profiles use, so grant only what the configured profiles need. A missing permission only shows up at runtime as an `ERROR` result with a 401/403 message.
@@ -143,8 +143,8 @@ For OAuth, see [Using OAuth 2.0](#using-oauth-20). A `403` means the user lacks 
 
 | Property          | Value with blindata-agent                                                                                                                             |
 | :---------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gateway_url`     | The agent URL of step b                                                                                                                               |
-| `gateway_user`    | API key method: the application user of step c, sent as the `X-BD-User` header                                                                        |
+| `gateway_url`     | The agent URL of step 2                                                                                                                               |
+| `gateway_user`    | API key method: the application user of step 3, sent as the `X-BD-User` header                                                                        |
 | `gateway_api_key` | API key method: its API key, sent as the `X-BD-ApiKey` header                                                                                         |
 | `gateway_tenant`  | The Blindata tenant UUID, sent as the `X-BD-Tenant` header (both methods). With OAuth, the other two properties are not needed: use an OAuth profile. |
 
@@ -252,11 +252,11 @@ When the ticket reaches a closed state, ServiceNow must call the webhook through
 
 | Setting         | Value                                                                                       |
 | :-------------- | :------------------------------------------------------------------------------------------ |
-| Table           | The fulfilled record (per interface: see each use case)                                     |
+| Table           | The fulfilled record (see each scenario page)                                     |
 | When            | `after`                                                                                     |
 | Insert / Update | Update only                                                                                 |
 | Advanced        | checked                                                                                     |
-| Condition       | State **changes into a closed state** and the correlation value is not empty (per use case) |
+| Condition       | State **changes into a closed state** and the correlation value is not empty (see each scenario page) |
 
 Store the three connection values as **system properties**, never in the script:
 
@@ -265,12 +265,13 @@ Store the three connection values as **system properties**, never in the script:
 | `x_acme.marketplace.gateway_url`          | The gateway URL that fronts the webhook                                                                                                                          |
 | `x_acme.marketplace.gateway_user`         | The gateway credential identifier                                                                                                                                |
 | `x_acme.marketplace.gateway_api_key`      | The gateway secret. Prefer a `password2` property (decrypt it in the script with the platform's standard `GlideEncrypter`) or a Connection and Credential record |
+| `x_acme.marketplace.gateway_tenant`       | blindata-agent only: the Blindata tenant UUID, sent as the `X-BD-Tenant` header                                                                                 |
 
-Template script. Replace the marked parts according to the use case (the correlation read-back, and optionally the fields you send):
+Template script. Replace the marked parts according to the scenario (the correlation read-back, and optionally the fields you send):
 
 ```javascript
 (function executeRule(current, previous /* null when async */) {
-  // 1. Read the marketplace request UUID back from the ticket (use case specific)
+  // 1. Read the marketplace request UUID back from the ticket (scenario specific)
   var correlationId = current.getValue('correlation_id') || '';
   if (!correlationId) {
     return; // not a marketplace ticket
@@ -280,6 +281,7 @@ Template script. Replace the marked parts according to the use case (the correla
   var url = gs.getProperty('x_acme.marketplace.gateway_url');
   var user = gs.getProperty('x_acme.marketplace.gateway_user');
   var apiKey = gs.getProperty('x_acme.marketplace.gateway_api_key');
+  var tenant = gs.getProperty('x_acme.marketplace.gateway_tenant'); // blindata-agent only
 
   // 3. The webhook contract: {correlationId, fields{...}}
   var payload = {
@@ -307,6 +309,8 @@ Template script. Replace the marked parts according to the use case (the correla
   // Credential headers expected by your gateway (see section 5)
   message.setRequestHeader('<USER_HEADER>', user);
   message.setRequestHeader('<API_KEY_HEADER>', apiKey);
+  // blindata-agent: the headers above are X-BD-User and X-BD-ApiKey, plus the tenant
+  message.setRequestHeader('X-BD-Tenant', tenant);
   message.setRequestBody(JSON.stringify(payload));
   message.executeAsync(); // fire and forget, does not block the user's update
 })(current, previous);
@@ -322,7 +326,7 @@ The payload contract and the answers are documented in the [API reference](api-r
 
 ## Service Catalog ordering on behalf of others
 
-Only needed for the [Service Catalog use case](use-case-service-catalog.md). ServiceNow honours `sysparm_requested_for` only if the caller may request for other users. Otherwise it **silently** places the order for the integration user.
+Only needed for the [Service Catalog scenario](../scenarios/service-catalog.md). ServiceNow honours `sysparm_requested_for` only if the caller may request for other users. Otherwise it **silently** places the order for the integration user.
 
 The permission is controlled by `glide.sc.req_for.roles`, which is empty by default; with `glide.sc.req_for.roles.default = deny`, nobody but admins can request for others. Create a dedicated role (for example `odm_marketplace_requester`), grant it to the integration user, and set **System Properties >** `glide.sc.req_for.roles` to that role (comma-separate it if the property already lists roles). Verify once by checking that a test REQ shows the requester, not the integration user, in _Requested for_.
 
@@ -337,4 +341,4 @@ Also supply every **mandatory variable** of the catalog item through the profile
 
 ---
 
-[Back to README](../README.md) | [Use cases](use-cases.md) | [Provisioning](provisioning.md)
+[Back to README](../../README.md) | [Scenarios](../../README.md#1-pick-your-scenario) | [Build, run locally and release](build-and-run.md)

@@ -1,10 +1,10 @@
-# Provisioning: build, deploy, run and verify
+# Build, run locally and release
 
-[Back to README](../README.md)
+[Back to README](../../README.md)
 
 ## Overview
 
-The executor is a small, stateless Java service. You take the ready-made Docker image (or build it), give it a configuration file and a few secrets, start it, and tell the ODM Marketplace Service where it lives. After that, a test request should create a ticket in ServiceNow. This page walks through those steps. Every release is published as a Docker image on GitHub Container Registry and Docker Hub, built by GitHub Actions. The repository does not ship a Helm chart or Kubernetes manifests; the image runs on any container platform, and the JVM build also runs as a plain Java 21 process.
+The executor is a small, stateless Java service. This page covers building it, running it on your machine (with Maven or Docker), the tests, and how releases are published. To deploy it, follow a [platform quickstart](../../README.md#2-pick-your-platform) or [Deployment](deployment.md). Every release is published as a Docker image on GitHub Container Registry and Docker Hub, built by GitHub Actions. The repository does not ship a Helm chart or Kubernetes manifests; the image runs on any container platform, and the JVM build also runs as a plain Java 21 process.
 
 ## Contents
 
@@ -13,10 +13,6 @@ The executor is a small, stateless Java service. You take the ready-made Docker 
 - [Configure](#configure)
 - [Run](#run)
 - [Run with Docker](#run-with-docker)
-- [Container configuration](#container-configuration)
-- [Deploy](#deploy)
-- [Register with the Marketplace Service](#register-with-the-marketplace-service)
-- [Verify](#verify)
 - [Tests](#tests)
 - [CI/CD and releases](#cicd-and-releases)
 
@@ -56,7 +52,7 @@ The JVM build is started with `java -jar target/quarkus-app/quarkus-run.jar`. Th
 
 Every property is listed in the [configuration reference](configuration-reference.md).
 
-2. **Ticket profiles** in an external file: the packaged `application.yml` contains **no** `servicenow.profiles`, so the executor will not start without them. Create `config/application.yml` in the working directory, or point `QUARKUS_CONFIG_LOCATIONS` at your file. Start from the [use case](use-cases.md) that matches your ServiceNow practice; the [Table API](use-case-table-api.md) one works as-is on a standard instance.
+2. **Ticket profiles** in an external file: the packaged `application.yml` contains **no** `servicenow.profiles`, so the executor will not start without them. Create `config/application.yml` in the working directory, or point `QUARKUS_CONFIG_LOCATIONS` at your file. Start from the [scenario](../../README.md#1-pick-your-scenario) that matches your ServiceNow practice; the [simple access ticket](../scenarios/table-api.md) works as-is on a standard instance.
 
 ## Run
 
@@ -121,69 +117,6 @@ docker build -t odm-platform-adapter-marketplace-executor-servicenow .
 
 The `Dockerfile` copies `target/*-runner` to `/work/application`, so the native build must run first. It takes several minutes.
 
-## Container configuration
-
-- **Environment variables.** The same ones as in [Configure](#configure); every property can be set this way ([configuration reference](configuration-reference.md)). Credentials (`SERVICENOW_CLIENT_SECRET`, `SERVICENOW_API_KEY`) go in secrets, not in the image or a committed file.
-- **Ticket profiles.** The packaged `application.yml` has no `servicenow.profiles`, so the container will not start without them. The container working directory is `/work` and the executor reads `config/application.yml` relative to it: mount your file at `/work/config/application.yml`. Alternatively mount it anywhere and set `QUARKUS_CONFIG_LOCATIONS` to its path (for example `-e QUARKUS_CONFIG_LOCATIONS=/etc/executor/application.yml`). Other properties can be set in that file instead of environment variables.
-- **Port.** `9019` is exposed. Override with `QUARKUS_HTTP_PORT` if needed and map it accordingly.
-- **User.** The process runs as user `1001` (group `root`, as OpenShift-style platforms expect). Mounted files must be readable by it.
-- **Startup validation.** The container exits with a numbered list of problems if the configuration is invalid; read them with `docker logs`.
-
-## Deploy
-
-- **Containers / Kubernetes.** Use the published image. Mount your `config/application.yml` at `/work/config/application.yml` (or set `QUARKUS_CONFIG_LOCATIONS`), and inject the `SERVICENOW_*` values from your secret store as environment variables. Expose port `9019` only inside the cluster. A sketch of the container spec:
-
-  ```yaml
-  containers:
-    - name: executor
-      image: ghcr.io/opendatamesh-initiative/odm-platform-adapter-marketplace-executor-servicenow:<version>
-      ports:
-        - containerPort: 9019
-      envFrom:
-        - secretRef:
-            name: servicenow-executor-credentials   # SERVICENOW_CLIENT_ID, SERVICENOW_CLIENT_SECRET
-      env:
-        - name: SERVICENOW_INSTANCE_URL
-          value: https://acme.service-now.com
-        - name: ODM_PRODUCT_PLANE_MARKETPLACE_SERVICE_ADDRESS
-          value: http://marketplace-service:8085
-      volumeMounts:
-        - name: profiles
-          mountPath: /work/config
-  volumes:
-    - name: profiles
-      configMap:
-        name: servicenow-executor-profiles           # key: application.yml
-  ```
-
-  Use a cluster-internal `Service` only, and a `NetworkPolicy` that admits just the Marketplace Service and the gateway.
-- **Network isolation (hard requirement).** The webhook has no authentication of its own. The executor must be reachable **only** by the Marketplace Service and by the authenticating gateway: never directly from ServiceNow or the internet. See [ServiceNow setup](servicenow-setup.md#5-securing-the-webhook).
-- **Egress.** The executor must reach the ServiceNow instance (HTTPS) and the Marketplace Service.
-- **Several executors** behind one Marketplace Service need exclusive filters: see [Concepts](concepts.md#request-filter).
-- **Secrets** come from the environment or mounted secrets, never from a committed file. Rotation steps are in [ServiceNow setup](servicenow-setup.md#rotating-secrets).
-
-## Register with the Marketplace Service
-
-The Marketplace Service forwards every request to the executors listed in its own configuration (`odm.utility-plane.marketplace-executors`), calling `{address}/api/v1/up/marketplace-executor/requests`. Add this executor:
-
-```yaml
-odm:
-  utility-plane:
-    marketplace-executors:
-      - name: SERVICENOW
-        address: http://marketplace-executor.internal:9019
-        active: true
-```
-
-The `name` is free. Restart the Marketplace Service if it does not reload configuration. Also [secure the webhook](servicenow-setup.md#5-securing-the-webhook) (register the executor in your authenticating gateway) and create the ServiceNow Business Rule.
-
-## Verify
-
-1. **Health of the process.** Swagger UI at [http://localhost:9019/swagger-ui](http://localhost:9019/swagger-ui) and the OpenAPI document at [http://localhost:9019/api-docs](http://localhost:9019/api-docs) should load.
-2. **ServiceNow credentials.** Run the `curl` token test from [ServiceNow setup](servicenow-setup.md#2-authentication-oauth-20-client-credentials-recommended).
-3. **Webhook chain** (harmless): the [smoke test](servicenow-setup.md#5-securing-the-webhook) must answer `200 {"outcome":"IGNORED","reason":"UNKNOWN_REQUEST"}`.
-4. **End to end.** Submit a request for a data product matched by your filter in the marketplace. In the executor log you should see `Opened ServiceNow ticket <number> (<table>) for request <uuid> operation <op>`, the request shows `PENDING` with the ticket link in the marketplace, and closing the ticket in ServiceNow produces the final status.
-
 ## Tests
 
 ```bash
@@ -215,4 +148,4 @@ To make a release:
 5. Bump the POM to the next `-SNAPSHOT` version.
 
 ---
-[Back to README](../README.md) | [Troubleshooting](troubleshooting.md)
+[Back to README](../../README.md) | [Troubleshooting](troubleshooting.md)

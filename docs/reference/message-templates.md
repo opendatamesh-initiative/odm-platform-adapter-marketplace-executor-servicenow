@@ -1,6 +1,6 @@
 # Message templates and privacy
 
-[Back to README](../README.md)
+[Back to README](../../README.md)
 
 ## Overview
 
@@ -103,4 +103,4 @@ Result messages go to the Marketplace Service history and, are shown to marketpl
 - The executor never logs request headers, tokens, secrets or request bodies.
 
 ---
-[Back to README](../README.md) | [Configuration reference](configuration-reference.md)
+[Back to README](../../README.md) | [Configuration reference](configuration-reference.md)
