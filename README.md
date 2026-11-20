@@ -80,6 +80,12 @@ Read these when you need more than the quickstart: production hardening, other o
 | [Build, run locally and release](docs/reference/build-and-run.md) | Maven and Docker builds, local run, tests, CI/CD and releases |
 | [Troubleshooting](docs/reference/troubleshooting.md) | Startup errors, `ERROR` and `PENDING` diagnosis, logs |
 
+## Docker
+
+The image is published on Docker Hub as `opendatamesh/odm-platform-adapter-marketplace-executor-servicenow` and on GitHub Container Registry; see [Build, run locally and release](docs/reference/build-and-run.md) and [Deployment](docs/reference/deployment.md).
+
+The Docker Hub overview of this image is [`DOCKERHUB.md`](DOCKERHUB.md). It is published on every release, so keep it up to date.
+
 ## Related links
 
 - [Open Data Mesh Architecture](https://platform.opendatamesh.org/architecture/)
